@@ -10,6 +10,13 @@ module BestInPlace
         raise ArgumentError, "Can't find helper #{opts[:display_with]}"
       end
 
+      if opts[:form_builder].present?
+        extras = get_name_and_id(opts[:form_builder], field, opts)
+        opts[:param_name] = get_name_and_id(opts[:form_builder], :id, opts)['name'] + "=#{opts[:form_builder].object.id}"
+        opts[:param_name] += "&" + extras['name']
+        opts[:id] = extras['id']
+      end
+
       real_object = real_object_for object
       opts[:type] ||= :input
       opts[:collection] ||= []
@@ -40,7 +47,9 @@ module BestInPlace
       end
 
       out = "<span class='#{classes.join(" ")}'"
-      out << " id='#{BestInPlace::Utils.build_best_in_place_id(real_object, field)}'"
+
+      out << " id='#{opts[:id] || BestInPlace::Utils.build_best_in_place_id(real_object, field)}'"
+
       out << " data-url='#{opts[:path].blank? ? url_for(object) : url_for(opts[:path])}'"
       out << " data-object='#{opts[:object_name] || BestInPlace::Utils.object_to_key(real_object)}'"
       out << " data-collection='#{attribute_escape(collection)}'" unless collection.blank?
@@ -57,6 +66,7 @@ module BestInPlace
       out << " data-html-attrs='#{opts[:html_attrs].to_json}'" unless opts[:html_attrs].blank?
       out << " data-original-content='#{attribute_escape(real_object.send(field))}'" if opts[:display_as] || opts[:display_with]
       out << " data-value='#{attribute_escape(value)}'" if value
+      out << " data-param-name='#{opts[:param_name]}'" if opts[:param_name]
 
       if opts[:data] && opts[:data].is_a?(Hash)
         opts[:data].each do |k, v|
@@ -84,15 +94,15 @@ module BestInPlace
       end
     end
 
-  private
+    private
     def build_value_for(object, field, opts)
       return "" if object.send(field).blank?
 
       klass = if object.respond_to?(:id)
-        "#{object.class}_#{object.id}"
-      else
-        object.class.to_s
-      end
+                "#{object.class}_#{object.id}"
+              else
+                object.class.to_s
+              end
 
       if opts[:display_as]
         BestInPlace::DisplayMethods.add_model_method(klass, field, opts[:display_as])
@@ -119,14 +129,38 @@ module BestInPlace
       return unless data
 
       data.to_s.
-        gsub("&", "&amp;").
-        gsub("'", "&apos;").
-        gsub(/\r?\n/, "&#10;")
+          gsub("&", "&amp;").
+          gsub("'", "&apos;").
+          gsub(/\r?\n/, "&#10;")
     end
 
     def real_object_for(object)
       (object.is_a?(Array) && object.last.class.respond_to?(:model_name)) ? object.last : object
     end
+
+
+    ActionView::Helpers::InstanceTag.class_eval do
+      def get_public_name_and_id(object_name, method, options = {})
+        add_default_name_and_id(options)
+        options
+      end
+    end
+
+    ActionView::Helpers::FormHelper.module_eval do
+      def name_and_id(object_name, method, options = {})
+        ActionView::Helpers::InstanceTag.new(object_name, method, self, options.delete(:object)).get_public_name_and_id("text", options)
+      end
+    end
+    ActionView::Helpers::FormBuilder.module_eval do
+      def name_and_id(method, text = nil, options = {}, &block)
+        @template.name_and_id(@object_name, method, objectify_options(options), &block)
+      end
+    end
+
+    def get_name_and_id(form_object, object_name, method, options = {})
+      form_object.name_and_id(object_name, method, options = {})
+    end
+
   end
 end
 
