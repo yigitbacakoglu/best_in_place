@@ -13,6 +13,14 @@ module BestInPlace
       if opts[:form_builder].present?
         extras = get_name_and_id(opts[:form_builder], field, opts)
         opts[:param_name] = get_name_and_id(opts[:form_builder], :id, opts)['name'] + "=#{opts[:form_builder].object.id}"
+
+        parent_builder = opts[:form_builder].parent_builder
+
+        while parent_builder.present? do
+          opts[:param_name] += "&" + get_name_and_id(parent_builder, :id, opts)['name'] + "=#{parent_builder.object.id}"
+          parent_builder = parent_builder.parent_builder
+        end
+
         opts[:param_name] += "&" + extras['name']
         opts[:id] = extras['id']
       end
